@@ -3,7 +3,9 @@ data/
 libs/
 ready_trader_go/
 autotrader
+autotrader_*
 *.log
 *.dat
 *.csv
 *.py
+*.json

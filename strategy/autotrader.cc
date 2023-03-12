@@ -27,6 +27,7 @@ using namespace ReadyTraderGo;
 
 RTG_INLINE_GLOBAL_LOGGER_WITH_CHANNEL(LG_AT, "AUTO")
 
+constexpr int MARGIN_BASIS = 10;
 constexpr int MAX_ORDER_DEPTH = 5;
 constexpr int LOT_SIZE = 10;
 constexpr int POSITION_LIMIT = 100;
@@ -36,6 +37,11 @@ constexpr int MAX_ASK_NEAREST_TICK = MAXIMUM_ASK / TICK_SIZE_IN_CENTS * TICK_SIZ
 
 Order MAX_ORDER = { MAXIMUM_ASK, 0, 0, false };
 Order MIN_ORDER = { 0, 0, 0, false };
+
+unsigned long MultiplyBasis(unsigned long n, long basis, bool ceil) {
+	unsigned long d = 10000 + basis;
+	return 100 * ((n * d)/1000000);
+}
 
 AutoTrader::AutoTrader(boost::asio::io_context& context) : BaseAutoTrader(context)
 {
@@ -96,16 +102,14 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
 
 void AutoTrader::RepriceSellOrders(const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
 								  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes) {
-		
-	unsigned long newAskPrice = (askPrices[0] != 0) ? askPrices[0] + 100 : MAXIMUM_ASK;
+	
+	unsigned long newAskPrice = (askPrices[0] != 0) ? MultiplyBasis(askPrices[0], MARGIN_BASIS, true) : MAXIMUM_ASK;
 	
 	unsigned long largestOrderId = 0;
 	Order* largestOrder = &MIN_ORDER;
 	bool askAlreadyExists = false;
-	int cc = 0;
 	for(auto& [ orderId, order ] : mAsks) {
 		if(order.cancelling) {
-			cc++;
 			continue;
 		}
 		if(order.price == newAskPrice) {
@@ -119,8 +123,6 @@ void AutoTrader::RepriceSellOrders(const std::array<unsigned long, ReadyTraderGo
 			largestOrder = &order;
 		}
 	}
-	
-	RLOG(LG_AT, LogLevel::LL_INFO) << cc << " already cancelling rn (there are " << mAsks.size() << " total)";
 	
 	if(largestOrderId != 0 && !largestOrder->cancelling && mETFOrderAskCount >= MAX_ORDER_DEPTH - 1) {
 		RLOG(LG_AT, LogLevel::LL_INFO) << "cancelling sell order " << largestOrderId << " @ " << largestOrder->price << " to make room for other orders";
@@ -148,7 +150,7 @@ void AutoTrader::RepriceSellOrders(const std::array<unsigned long, ReadyTraderGo
 void AutoTrader::RepriceBuyOrders(const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
 								  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) {
 	
-	unsigned long newBidPrice = (bidPrices[0] != 0) ? bidPrices[0] - 100 : 0;
+	unsigned long newBidPrice = (bidPrices[0] != 0) ? MultiplyBasis(bidPrices[0], -MARGIN_BASIS, false) : 0;
 	
 	unsigned long smallestOrderId = 0;
 	Order* smallestOrder = &MAX_ORDER;
@@ -170,11 +172,8 @@ void AutoTrader::RepriceBuyOrders(const std::array<unsigned long, ReadyTraderGo:
 	}
 	
 	if(smallestOrderId != 0 && !smallestOrder->cancelling && mETFOrderBidCount >= MAX_ORDER_DEPTH - 1) {
-		RLOG(LG_AT, LogLevel::LL_INFO) << "cancelling buy order poo" << smallestOrderId << " @ " << smallestOrder->price << " to make room for other orders";
 		smallestOrder->cancelling = true;
 		SendCancelOrder(smallestOrderId);
-	} else {
-		RLOG(LG_AT, LogLevel::LL_INFO) << "not cancelling buy order " << smallestOrderId << " " << mETFOrderBidCount;	
 	}
 	
 	if(bidAlreadyExists 
