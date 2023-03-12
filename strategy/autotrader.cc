@@ -27,9 +27,8 @@ using namespace ReadyTraderGo;
 
 RTG_INLINE_GLOBAL_LOGGER_WITH_CHANNEL(LG_AT, "AUTO")
 
-constexpr int MARGIN_BASIS = 10;
+constexpr int MARGIN_BASIS = 7;
 constexpr int MAX_ORDER_DEPTH = 5;
-constexpr int LOT_SIZE = 10;
 constexpr int POSITION_LIMIT = 100;
 constexpr int TICK_SIZE_IN_CENTS = 100;
 constexpr int MIN_BID_NEARST_TICK = (MINIMUM_BID + TICK_SIZE_IN_CENTS) / TICK_SIZE_IN_CENTS * TICK_SIZE_IN_CENTS;
@@ -79,12 +78,6 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
                                          const std::array<unsigned long, TOP_LEVEL_COUNT>& bidVolumes)
 {
 	
-	if(sequenceNumber <= mOrderBookSequence) {
-		RLOG(LG_AT, LogLevel::LL_INFO) << "received old order book information.";
-		return;
-	}
-	mOrderBookSequence = sequenceNumber;
-	
     RLOG(LG_AT, LogLevel::LL_INFO) << "order book received for " << instrument << " instrument"
                                    << ": ask prices: " << askPrices[0]
                                    << "; ask volumes: " << askVolumes[0]
@@ -92,8 +85,16 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
                                    << "; bid volumes: " << bidVolumes[0];
 
     if (instrument != Instrument::FUTURE) {
+		mMarketMaxBid = bidPrices[0];
+		mMarketMinAsk = askPrices[0] ? askPrices[0] : MAXIMUM_ASK;
         return;
     }
+
+	if(sequenceNumber <= mOrderBookSequence) {
+		RLOG(LG_AT, LogLevel::LL_INFO) << "received old order book information.";
+		return;
+	}
+	mOrderBookSequence = sequenceNumber;
 	
 	RepriceSellOrders(askPrices, askVolumes);
 	RepriceBuyOrders(bidPrices, bidVolumes);
@@ -103,7 +104,7 @@ void AutoTrader::OrderBookMessageHandler(Instrument instrument,
 void AutoTrader::RepriceSellOrders(const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
 								  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes) {
 	
-	unsigned long newAskPrice = (askPrices[0] != 0) ? MultiplyBasis(askPrices[0], MARGIN_BASIS, true) : MAXIMUM_ASK;
+	unsigned long newAskPrice = (askPrices[0] != 0) ? std::max(mMarketMaxBid + 100, MultiplyBasis(askPrices[0], MARGIN_BASIS, true)) : MAXIMUM_ASK;
 	
 	unsigned long largestOrderId = 0;
 	Order* largestOrder = &MIN_ORDER;
@@ -130,27 +131,30 @@ void AutoTrader::RepriceSellOrders(const std::array<unsigned long, ReadyTraderGo
 		SendCancelOrder(largestOrderId);
 	}
 	
+	// TODO: maybe theres a quadratic function for this
+	long orderVolume = (mETFPosition + POSITION_LIMIT)/MAX_ORDER_DEPTH;
+	
 	if (askAlreadyExists 
-		|| (mETFPosition - mETFOrderPositionSell - LOT_SIZE) < -POSITION_LIMIT 
+		|| (mETFPosition - mETFOrderPositionSell - orderVolume) < -POSITION_LIMIT 
 		|| mETFOrderAskCount >= MAX_ORDER_DEPTH
 		|| askPrices[0] == 0) {
 		return;
 	}
 	
 	auto orderId = mNextMessageId++;
-    SendInsertOrder(orderId, Side::SELL, newAskPrice, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+    SendInsertOrder(orderId, Side::SELL, newAskPrice, orderVolume, Lifespan::GOOD_FOR_DAY);
 
 	mETFOrderAskCount++;
-    mETFOrderPositionSell += LOT_SIZE;
+    mETFOrderPositionSell += orderVolume;
     
-	mAsks[orderId] = { newAskPrice, LOT_SIZE, 0 };
+	mAsks[orderId] = { newAskPrice, (unsigned long) orderVolume, 0 };
 	
 }
 
 void AutoTrader::RepriceBuyOrders(const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
 								  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) {
 	
-	unsigned long newBidPrice = (bidPrices[0] != 0) ? MultiplyBasis(bidPrices[0], -MARGIN_BASIS, false) : 0;
+	unsigned long newBidPrice = (bidPrices[0] != 0) ? std::min(mMarketMinAsk - 100, MultiplyBasis(bidPrices[0], -MARGIN_BASIS, false)) : 0;
 	
 	unsigned long smallestOrderId = 0;
 	Order* smallestOrder = &MAX_ORDER;
@@ -176,19 +180,21 @@ void AutoTrader::RepriceBuyOrders(const std::array<unsigned long, ReadyTraderGo:
 		SendCancelOrder(smallestOrderId);
 	}
 	
+	long orderVolume = (POSITION_LIMIT - mETFPosition)/MAX_ORDER_DEPTH;
+	
 	if(bidAlreadyExists 
-		|| (mETFPosition + mETFOrderPositionBuy + LOT_SIZE) > POSITION_LIMIT 
+		|| (mETFPosition + mETFOrderPositionBuy + orderVolume) > POSITION_LIMIT 
 		|| mETFOrderBidCount >= MAX_ORDER_DEPTH
 		|| bidPrices[0] == 0) {
 		return;
 	}
 	
 	auto orderId = mNextMessageId++;
-    SendInsertOrder(orderId, Side::BUY, newBidPrice, LOT_SIZE, Lifespan::GOOD_FOR_DAY);
+    SendInsertOrder(orderId, Side::BUY, newBidPrice, orderVolume, Lifespan::GOOD_FOR_DAY);
 
 	mETFOrderBidCount++;
-    mETFOrderPositionBuy += LOT_SIZE;
-    mBids[orderId] = { newBidPrice, LOT_SIZE, 0 };
+    mETFOrderPositionBuy += orderVolume;
+    mBids[orderId] = { newBidPrice, (unsigned long) orderVolume, 0 };
 	
 }
 

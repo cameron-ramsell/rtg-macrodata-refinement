@@ -111,10 +111,8 @@ public:
 
 private:
     unsigned long mNextMessageId = 1;
-    unsigned long mAskId = 0;
-    unsigned long mAskPrice = 0;
-    unsigned long mBidId = 0;
-    unsigned long mBidPrice = 0;
+	unsigned long mMarketMaxBid = 0;
+	unsigned long mMarketMinAsk = ReadyTraderGo::MAXIMUM_ASK;
     
 	unsigned long mOrderBookSequence = 0;
 	
