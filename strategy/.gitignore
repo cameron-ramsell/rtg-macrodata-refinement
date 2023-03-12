@@ -1,0 +1,9 @@
+build/
+data/
+libs/
+ready_trader_go/
+autotrader
+*.log
+*.dat
+*.csv
+*.py
