@@ -29,20 +29,18 @@
 #include <ready_trader_go/types.h>
 
 struct Order {
-	
-	unsigned long price;
-	
-	unsigned long remainingVolume;
-	unsigned long filledVolume;
-	
-	bool cancelling = false;
-	
+
+    unsigned long price;
+
+    unsigned long remainingVolume;
+    unsigned long filledVolume;
+
+    bool cancelling = false;
 };
 
-class AutoTrader : public ReadyTraderGo::BaseAutoTrader
-{
+class AutoTrader : public ReadyTraderGo::BaseAutoTrader {
 public:
-    explicit AutoTrader(boost::asio::io_context& context);
+    explicit AutoTrader(boost::asio::io_context &context);
 
     // Called when the execution connection is lost.
     void DisconnectHandler() override;
@@ -51,7 +49,7 @@ public:
     // If the error pertains to a particular order, then the client_order_id
     // will identify that order, otherwise the client_order_id will be zero.
     void ErrorMessageHandler(unsigned long clientOrderId,
-                             const std::string& errorMessage) override;
+                             const std::string &errorMessage) override;
 
     // Called when one of your hedge orders is filled, partially or fully.
     //
@@ -69,18 +67,20 @@ public:
     // messages. The five best available ask (i.e. sell) and bid (i.e. buy)
     // prices are reported along with the volume available at each of those
     // price levels.
-    void OrderBookMessageHandler(ReadyTraderGo::Instrument instrument,
-                                 unsigned long sequenceNumber,
-                                 const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
-                                 const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
-                                 const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
-                                 const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) override;
+    void OrderBookMessageHandler(
+        ReadyTraderGo::Instrument instrument, unsigned long sequenceNumber,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &askPrices,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &askVolumes,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &bidPrices,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &bidVolumes) override;
 
-	void RepriceBuyOrders(const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
-                          const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes);
-	void RepriceSellOrders(const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
-                           const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes);
-						  
+    void RepriceBuyOrders(unsigned long newBidPrice);
+    void RepriceSellOrders(unsigned long newAskPrice);
+
     // Called when one of your orders is filled, partially or fully.
     void OrderFilledMessageHandler(unsigned long clientOrderId,
                                    unsigned long price,
@@ -102,34 +102,35 @@ public:
     // traded at each of those price levels.
     // If there are less than five prices on a side, then zeros will appear at
     // the end of both the prices and volumes arrays.
-    void TradeTicksMessageHandler(ReadyTraderGo::Instrument instrument,
-                                  unsigned long sequenceNumber,
-                                  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askPrices,
-                                  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& askVolumes,
-                                  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidPrices,
-                                  const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>& bidVolumes) override;
+    void TradeTicksMessageHandler(
+        ReadyTraderGo::Instrument instrument, unsigned long sequenceNumber,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &askPrices,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &askVolumes,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &bidPrices,
+        const std::array<unsigned long, ReadyTraderGo::TOP_LEVEL_COUNT>
+            &bidVolumes) override;
 
 private:
     unsigned long mNextMessageId = 1;
-	unsigned long mMarketMaxBid = 0;
-	unsigned long mMarketMinAsk = ReadyTraderGo::MAXIMUM_ASK;
-    
-	unsigned long mOrderBookSequence = 0;
-	
-	// The change in the position we hold if all orders that have left our bot were filled 
-	// either mETFPosition + mETFOrderPositionBuy > 100 or mETFPosition - mETFOrderPositionSell < 100 will disqualify our bot
-	signed long mETFOrderPositionSell = 0;
-	signed long mETFOrderPositionBuy = 0;
-	
-	unsigned int mETFOrderAskCount = 0;
-	unsigned int mETFOrderBidCount = 0;
-	
-	signed long mETFPosition = 0;
-	
-	// We track the state of our orders that are currently in the market
-	std::unordered_map<unsigned long, Order> mAsks;
-	std::unordered_map<unsigned long, Order> mBids;
-	
+    unsigned long mOrderBookSequence = 0;
+
+    // The change in the position we hold if all orders that have left our bot
+    // were filled either mETFPosition + mETFOrderPositionBuy > 100 or
+    // mETFPosition - mETFOrderPositionSell < 100 will disqualify our bot
+    signed long mETFOrderPositionSell = 0;
+    signed long mETFOrderPositionBuy = 0;
+
+    unsigned int mETFOrderAskCount = 0;
+    unsigned int mETFOrderBidCount = 0;
+
+    signed long mETFPosition = 0;
+
+    // We track the state of our orders that are currently in the market
+    std::unordered_map<unsigned long, Order> mAsks;
+    std::unordered_map<unsigned long, Order> mBids;
 };
 
-#endif //CPPREADY_TRADER_GO_AUTOTRADER_H
+#endif // CPPREADY_TRADER_GO_AUTOTRADER_H
